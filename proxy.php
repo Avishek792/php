@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// AES DECRYPT FUNCTION
+// AES 128 CBC decrypt
 function decrypt_cookie($c, $a, $b) {
     $key = hex2bin($a);
     $iv  = hex2bin($b);
@@ -23,7 +23,8 @@ function decrypt_cookie($c, $a, $b) {
         $iv
     );
 
-    $pad = ord($plain[strlen($plain)-1]);
+    // remove padding
+    $pad = ord(substr($plain, -1));
     if ($pad > 0 && $pad <= 16) {
         $plain = substr($plain, 0, -$pad);
     }
@@ -31,24 +32,24 @@ function decrypt_cookie($c, $a, $b) {
     return bin2hex($plain);
 }
 
-// 1) GET challenge HTML
+// 1. GET HTML challenge
 $ch = curl_init("https://bpanel.42web.io/api/login.php");
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $html = curl_exec($ch);
 curl_close($ch);
 
-// 2) EXTRACT ciphertext "c"
-preg_match('/toNumbers\("([0-9a-fA-F]+)"\)\);document/', $html, $match);
-$cipher_c = $match[1];
+// 2. extract the "c" value (it changes every request)
+preg_match('/toNumbers\("([0-9a-fA-F]+)"\)\)/', $html, $match);
+$c_value = $match[1];
 
 // constants from the JS
 $a = "f655ba9d09a112d4968c63579db590b4";
 $b = "98344c2eee86c3994890592585b49f80";
 
-// 3) DECRYPT cookie value
-$cookie_val = decrypt_cookie($cipher_c, $a, $b);
+// 3. decrypt cookie
+$cookie_val = decrypt_cookie($c_value, $a, $b);
 
-// 4) SEND actual login request with COOKIE
+// 4. send REAL login request
 $payload = file_get_contents("php://input");
 
 $ch = curl_init("https://bpanel.42web.io/api/login.php");
