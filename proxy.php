@@ -9,10 +9,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-function slowAES_decrypt($cipher_hex, $key_hex, $iv_hex) {
-    $key = hex2bin($key_hex);
-    $iv  = hex2bin($iv_hex);
-    $cipher = hex2bin($cipher_hex);
+// AES DECODE MATCHING slowAES
+function decrypt_cookie($c, $a, $b) {
+    $key = hex2bin($a);
+    $iv  = hex2bin($b);
+    $cipher = hex2bin($c);
 
     $plain = openssl_decrypt(
         $cipher,
@@ -23,40 +24,34 @@ function slowAES_decrypt($cipher_hex, $key_hex, $iv_hex) {
     );
 
     $pad = ord($plain[strlen($plain)-1]);
-    if ($pad > 0 && $pad <= 16) $plain = substr($plain, 0, -$pad);
+    if ($pad > 0 && $pad <= 16) {
+        $plain = substr($plain, 0, -$pad);
+    }
 
     return bin2hex($plain);
 }
 
-// ----------------------
-// 1) Get challenge page
-// ----------------------
+// 1) GET challenge page (returns HTML with JS)
 $ch = curl_init("https://bpanel.42web.io/api/login.php");
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
 $html = curl_exec($ch);
 curl_close($ch);
 
-// Extract dynamic ciphertext C
-preg_match('/toNumbers\("([0-9a-fA-F]+)"\);document/', $html, $match);
-$cipher_hex = $match[1];
+// 2) EXTRACT dynamic ciphertext "c"
+preg_match('/toNumbers\("([0-9a-fA-F]+)"\)\);document/', $html, $m);
+$c = $m[1];
 
-// Constant A (key)
-$key_hex = "f655ba9d09a112d4968c63579db590b4";
+// constants from your JS snippet
+$a = "f655ba9d09a112d4968c63579db590b4";
+$b = "98344c2eee86c3994890592585b49f80";
 
-// Constant B (IV)
-$iv_hex  = "98344c2eee86c3994890592585b49f80";
+// 3) GENERATE __test cookie
+$cookie_val = decrypt_cookie($c, $a, $b);
 
-// Generate cookie
-$cookie_val = slowAES_decrypt($cipher_hex, $key_hex, $iv_hex);
-
-// ----------------------
-// 2) Forward login POST
-// ----------------------
+// 4) SEND real login request with cookie
 $payload = file_get_contents("php://input");
 
 $ch = curl_init("https://bpanel.42web.io/api/login.php");
-
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
@@ -67,9 +62,9 @@ curl_setopt($ch, CURLOPT_HTTPHEADER, [
 ]);
 
 $response = curl_exec($ch);
-$code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
 
-http_response_code($code);
+http_response_code($status);
 echo $response;
 ?>
