@@ -6,49 +6,64 @@ header("Content-Type: application/json");
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     http_response_code(200);
-    exit();
+    exit;
 }
 
-// ---------- slowAES.decrypt equivalent ----------
-function slowAES_decrypt($c_hex, $key_hex, $iv_hex) {
+function slowAES_decrypt($cipher_hex, $key_hex, $iv_hex) {
     $key = hex2bin($key_hex);
     $iv  = hex2bin($iv_hex);
-    $ciphertext = hex2bin($c_hex);
+    $cipher = hex2bin($cipher_hex);
 
-    $decrypted = openssl_decrypt(
-        $ciphertext,
+    $plain = openssl_decrypt(
+        $cipher,
         "AES-128-CBC",
         $key,
         OPENSSL_RAW_DATA | OPENSSL_ZERO_PADDING,
         $iv
     );
 
-    // Remove PKCS#7 padding
-    $pad = ord($decrypted[strlen($decrypted)-1]);
-    if ($pad > 0 && $pad <= 16) {
-        $decrypted = substr($decrypted, 0, -$pad);
-    }
+    $pad = ord($plain[strlen($plain)-1]);
+    if ($pad > 0 && $pad <= 16) $plain = substr($plain, 0, -$pad);
 
-    return bin2hex($decrypted); // same as JS toHex
+    return bin2hex($plain);
 }
 
-// ---------- generate __test cookie ----------
-$cookie_val = slowAES_decrypt(
-    "bdeb8b5d16b0836c7b239804572d8cca",
-    "f655ba9d09a112d4968c63579db590b4",
-    "98344c2eee86c3994890592585b49f80"
-);
+// ----------------------
+// 1) Get challenge page
+// ----------------------
+$ch = curl_init("https://bpanel.42web.io/api/login.php");
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+$html = curl_exec($ch);
+curl_close($ch);
 
-// ---------- forward request ----------
+// Extract dynamic ciphertext C
+preg_match('/toNumbers\("([0-9a-fA-F]+)"\);document/', $html, $match);
+$cipher_hex = $match[1];
+
+// Constant A (key)
+$key_hex = "f655ba9d09a112d4968c63579db590b4";
+
+// Constant B (IV)
+$iv_hex  = "98344c2eee86c3994890592585b49f80";
+
+// Generate cookie
+$cookie_val = slowAES_decrypt($cipher_hex, $key_hex, $iv_hex);
+
+// ----------------------
+// 2) Forward login POST
+// ----------------------
+$payload = file_get_contents("php://input");
+
 $ch = curl_init("https://bpanel.42web.io/api/login.php");
 
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, file_get_contents("php://input"));
+curl_setopt($ch, CURLOPT_POSTFIELDS, $payload);
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
     "Content-Type: application/json",
     "Cookie: __test=$cookie_val",
-    "User-Agent: Mozilla/5.0" // match normal browser
+    "User-Agent: Mozilla/5.0"
 ]);
 
 $response = curl_exec($ch);
