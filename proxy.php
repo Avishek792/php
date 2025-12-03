@@ -9,7 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// AES DECODE MATCHING slowAES
+// AES DECRYPT FUNCTION
 function decrypt_cookie($c, $a, $b) {
     $key = hex2bin($a);
     $iv  = hex2bin($b);
@@ -31,24 +31,24 @@ function decrypt_cookie($c, $a, $b) {
     return bin2hex($plain);
 }
 
-// 1) GET challenge page (returns HTML with JS)
+// 1) GET challenge HTML
 $ch = curl_init("https://bpanel.42web.io/api/login.php");
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 $html = curl_exec($ch);
 curl_close($ch);
 
-// 2) EXTRACT dynamic ciphertext "c"
-preg_match('/toNumbers\("([0-9a-fA-F]+)"\)\);document/', $html, $m);
-$c = $m[1];
+// 2) EXTRACT ciphertext "c"
+preg_match('/toNumbers\("([0-9a-fA-F]+)"\)\);document/', $html, $match);
+$cipher_c = $match[1];
 
-// constants from your JS snippet
+// constants from the JS
 $a = "f655ba9d09a112d4968c63579db590b4";
 $b = "98344c2eee86c3994890592585b49f80";
 
-// 3) GENERATE __test cookie
-$cookie_val = decrypt_cookie($c, $a, $b);
+// 3) DECRYPT cookie value
+$cookie_val = decrypt_cookie($cipher_c, $a, $b);
 
-// 4) SEND real login request with cookie
+// 4) SEND actual login request with COOKIE
 $payload = file_get_contents("php://input");
 
 $ch = curl_init("https://bpanel.42web.io/api/login.php");
